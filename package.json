@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@xtruder/oc-plugin-convergence-engine",
+  "version": "0.1.0",
+  "description": "Convergence engine for OpenCode - automatically verifies and continues LLM work until tasks are truly complete",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./server": {
+      "import": "./server.ts",
+      "config": {
+        "enabled": true,
+        "maxRounds": 5,
+        "autoStart": false
+      }
+    },
+    "./tui": {
+      "import": "./tui.tsx",
+      "config": {
+        "enabled": true,
+        "sidebar": true,
+        "maxRounds": 5
+      }
+    }
+  },
+  "files": [
+    "server.ts",
+    "tui.tsx",
+    "prompts.ts",
+    "types.ts"
+  ],
+  "engines": {
+    "opencode": ">=1.3.14"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "*",
+    "@opentui/core": "*",
+    "@opentui/solid": "*",
+    "solid-js": "*"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": { "optional": true },
+    "@opentui/core": { "optional": true },
+    "@opentui/solid": { "optional": true },
+    "solid-js": { "optional": true }
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.3.0",
+    "@opentui/core": "*",
+    "@opentui/solid": "^0.1.96",
+    "bun-types": "^1.3.11",
+    "typescript": "^5.7.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "plugin": [
+    [
+      "@xtruder/opencode-claude-max-plugin",
+      {
+        "enabled": true,
+        "sidebar": true,
+        "poll_interval": 60
+      }
+    ]
+  ]
+}
