@@ -18,8 +18,11 @@ const KV_PREFIX = "convergence:"
 
 /** Minimal type for message objects returned by the SDK. */
 interface SessionMessage {
-  info: { role: "user" | "assistant" }
-  parts: Array<{ type: string; text?: string; status?: string }>
+  info: {
+    role: "user" | "assistant"
+    error?: { name?: string } | null
+  }
+  parts: Array<{ type: string; text?: string; status?: string; state?: { status?: string; error?: string } }>
 }
 
 interface ConvergenceDisplayState {
@@ -70,10 +73,11 @@ const tui: TuiPlugin = async (api, options) => {
   // Abort controller for the current verification run
   const [currentAbort, setCurrentAbort] = createSignal<AbortController | null>(null)
 
-  // Track whether the coding session completed normally (went busy then idle)
-  // vs was aborted. We only trigger verification after normal completion.
+  // Track whether the coding session went busy (user sent a prompt)
   const [sessionWentBusy, setSessionWentBusy] = createSignal(false)
-  const [sessionAborted, setSessionAborted] = createSignal(false)
+
+  // Track whether a question was dismissed/rejected during the current message
+  const [questionRejected, setQuestionRejected] = createSignal(false)
 
   // Idle event resolvers for promptAndWait
   const idleResolvers = new Map<string, () => void>()
@@ -500,17 +504,48 @@ const tui: TuiPlugin = async (api, options) => {
     // Trigger verification for the current session
     if (sessionID !== currentSessionID()) return
 
-    // Only trigger verification if the session completed normally (went busy
-    // then idle without being aborted). Reset tracking state either way.
+    // Only trigger verification if the session went busy (user sent a prompt)
+    // and the last assistant message completed without errors. This handles
+    // all abort scenarios including the race condition where aborting during
+    // a question/permission ask may not produce a MessageAbortedError.
     const wasBusy = sessionWentBusy()
-    const wasAborted = sessionAborted()
+    const wasQuestionRejected = questionRejected()
     setSessionWentBusy(false)
-    setSessionAborted(false)
+    setQuestionRejected(false)
 
-    if (!wasBusy || wasAborted) return
+    if (!wasBusy || wasQuestionRejected) return
 
     const s = state()
     if (!s || !s.active || s.processing) return
+
+    // Check the last assistant message to decide if verification is warranted.
+    // Skip if: the message was aborted, any tools were aborted, or no
+    // substantive tool calls were made (e.g. only text responses after a
+    // dismissed question or permission rejection).
+    try {
+      const messagesResp = await api.client.session.messages({ sessionID, limit: 3 })
+      const messages = (messagesResp.data ?? []) as Array<SessionMessage>
+      const lastAssistant = [...messages]
+        .reverse()
+        .find((m) => m.info?.role === "assistant")
+
+      if (!lastAssistant) return
+
+      // Skip if the message has an error (MessageAbortedError, etc.)
+      if (lastAssistant.info.error) return
+
+      // Skip if any tool was aborted
+      const hasAbortedTool = lastAssistant.parts.some(
+        (p) => p.type === "tool" && (
+          p.state?.error === "Tool execution aborted" ||
+          p.status === "error"
+        ),
+      )
+      if (hasAbortedTool) return
+    } catch {
+      // If we can't read messages, skip verification
+      return
+    }
 
     await runVerification(sessionID)
   })
@@ -524,7 +559,7 @@ const tui: TuiPlugin = async (api, options) => {
 
     if (props?.status?.type === "busy") {
       setSessionWentBusy(true)
-      setSessionAborted(false)
+      setQuestionRejected(false)
       hideVerifierDialog()
 
       const s = state()
@@ -542,11 +577,18 @@ const tui: TuiPlugin = async (api, options) => {
 
     const errorName = props.error?.name ?? props.error?.type
     if (errorName === "MessageAbortedError" || errorName === "message_aborted") {
-      setSessionAborted(true)
       abortVerification()
     }
   })
   api.lifecycle.onDispose(offError)
+
+  // question.rejected: track when user dismisses a question so we skip verification
+  const offQuestion = api.event.on("question.rejected", (event) => {
+    const props = (event as { properties?: { sessionID?: string } }).properties
+    if (props?.sessionID !== currentSessionID()) return
+    setQuestionRejected(true)
+  })
+  api.lifecycle.onDispose(offQuestion)
 
   // todo.updated: track todos from managed sessions (fork/verifier)
   const offTodo = api.event.on("todo.updated", (event) => {

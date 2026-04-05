@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@xtruder/oc-plugin-convergence-engine",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Convergence engine for OpenCode - automatically verifies and continues LLM work until tasks are truly complete",
   "license": "MIT",
   "type": "module",
